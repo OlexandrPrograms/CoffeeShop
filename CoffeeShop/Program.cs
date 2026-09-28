@@ -1,6 +1,8 @@
-﻿using System.Data;
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.SqlClient;
 using System.Configuration;
+using System.Data;
+using System.Diagnostics.Metrics;
+using System.Xml.Linq;
 
 namespace CoffeeShop
 {
@@ -23,24 +25,14 @@ namespace CoffeeShop
             while (true)
             {
                 Console.Clear();
-                Console.WriteLine("====================== МЕНЮ ======================");
-                Console.WriteLine($"Статус з'єднання: {(isConnected ? "ПІД'ЄДНАНО" : "ВІД'ЄДНАНО")}");  
-                Console.WriteLine("--------------------------------------------------");
-                Console.WriteLine(" 1. Під'єднатися до бази даних «Магазин кави»");
-                Console.WriteLine(" 2. Відображення всієї інформації з таблиці з кавою");
-                Console.WriteLine(" 3. Відображення назв усіх сортів кави");
-                Console.WriteLine(" 4. Відображення кави усіх видів арабіки");
-                Console.WriteLine(" 5. Відображення кави усіх видів робусти");
-                Console.WriteLine(" 6. Відображення купажу/бленду");
-                Console.WriteLine(" 7. Показати назви сортів кави ( <= 200 грамів )");
-                Console.WriteLine(" 8. Показати мінімальну собівартість кави");
-                Console.WriteLine(" 9. Показати максимальну собівартість кави");
-                Console.WriteLine("10. Показати середню собівартість кави");
-                Console.WriteLine("11. Кількість сортів з мінімальною собівартістю");
-                Console.WriteLine("12. Кількість сортів з максимальною собівартістю");
-                Console.WriteLine("13. Кількість арабіки, робусти, купажу/бленду");
+                Console.WriteLine("--- Головне меню ---");
+                Console.WriteLine($"Статус підключення: {(isConnected ? "Під'єднано" : "Від'єднано")}");
+                Console.WriteLine(" 1. Під'єднатися до БД");
+                Console.WriteLine(" 2. Виведення");
+                Console.WriteLine(" 3. Додати");
+                Console.WriteLine(" 4. Редагувати");
+                Console.WriteLine(" 5. Видалити");
                 Console.WriteLine(" 0. Вихід");
-                Console.WriteLine("==================================================");
                 Console.Write(" > ");
 
                 string choice = Console.ReadLine() ?? "";
@@ -54,7 +46,6 @@ namespace CoffeeShop
                             using (SqlConnection connection = new SqlConnection(conn))
                             {
                                 connection.Open();
-                                Console.WriteLine("Успішно під'єднано до БД!");
                             }
 
                             adapter = new SqlDataAdapter("SELECT * FROM Coffee", conn);
@@ -65,118 +56,100 @@ namespace CoffeeShop
 
                             adapter.Fill(dataSet, "Coffee");
                             table = dataSet.Tables["Coffee"];
+                            table.PrimaryKey = new DataColumn[] { table.Columns["Id"] };
 
                             isConnected = true;
+                            Console.WriteLine("Підключення успішне!");
                         }
                         catch (Exception ex)
                         {
-                            Console.WriteLine($"Помилка: {ex.Message}");
+                            Console.WriteLine($"Помилка підключення: {ex.Message}");
                         }
                         break;
 
                     case "2":
                         CheckConnectionAndDo(isConnected, () => {
-                            PrintTable(table);
+                            SelectMenu();
                         });
                         break;
 
                     case "3":
                         CheckConnectionAndDo(isConnected, () => {
-                            foreach (DataRow row in table.Rows)
-                                Console.WriteLine($"- {row["Name"]}");
+                            DataRow newRow = table.NewRow();
+                            Console.Write("Назва: ");
+                            newRow["Name"] = Console.ReadLine();
+
+                            Console.Write("Країна: ");
+                            newRow["Country"] = Console.ReadLine();
+
+                            Console.Write("Вид: ");
+                            newRow["Type"] = Console.ReadLine();
+
+                            Console.Write("Опис: ");
+                            newRow["Description"] = Console.ReadLine();
+
+                            Console.Write("Вага (г): ");
+                            newRow["Weight"] = int.Parse(Console.ReadLine() ?? "0");
+
+                            Console.Write("Ціна: ");
+                            newRow["Price"] = decimal.Parse(Console.ReadLine() ?? "0");
+
+                            table.Rows.Add(newRow);
+                            adapter.Update(table);
+                            Console.WriteLine("Запис успішно додано!");
                         });
                         break;
 
                     case "4":
-                        CheckConnectionAndDo(isConnected, () => {;
-                            DataRow[] rows = table.Select("Type = 'арабіка'");
-                            foreach (var r in rows)
-                                Console.WriteLine($"- {r["Name"]} ({r["Country"]}) | Вага: {r["Weight"]}г | Ціна: {r["Price"]} грн");
+                        CheckConnectionAndDo(isConnected, () => {
+                            PrintTable(table);
+                            Console.Write("\nВведіть ID: ");
+                            if (int.TryParse(Console.ReadLine(), out int idToUpdate))
+                            {
+                                DataRow rowToEdit = table.Rows.Find(idToUpdate);
+                                if (rowToEdit != null)
+                                {
+                                    Console.Write($"Нова назва ({rowToEdit["Name"]}): ");
+                                    string name = Console.ReadLine() ?? "";
+                                    if (!string.IsNullOrEmpty(name)) rowToEdit["Name"] = name;
+
+                                    Console.Write($"Нова вага ({rowToEdit["Weight"]}): ");
+                                    string wStr = Console.ReadLine() ?? "";
+                                    if (!string.IsNullOrEmpty(wStr)) rowToEdit["Weight"] = int.Parse(wStr);
+
+                                    Console.Write($"Нова ціна ({rowToEdit["Price"]}): ");
+                                    string pStr = Console.ReadLine() ?? "";
+                                    if (!string.IsNullOrEmpty(pStr)) rowToEdit["Price"] = decimal.Parse(pStr);
+
+                                    adapter.Update(table);
+                                    Console.WriteLine("Запис оновлено!");
+                                }
+                                else
+                                {
+                                    Console.WriteLine("Запис не знайдено");
+                                }
+                            }
                         });
                         break;
 
                     case "5":
                         CheckConnectionAndDo(isConnected, () => {
-                            DataRow[] rows = table.Select("Type = 'робуста'");
-                            foreach (var r in rows)
-                                Console.WriteLine($"- {r["Name"]} ({r["Country"]}) | Вага: {r["Weight"]}г | Ціна: {r["Price"]} грн");
-                        });
-                        break;
-
-                    case "6":
-                        CheckConnectionAndDo(isConnected, () => {
-                            DataRow[] rows = table.Select("Type = 'купаж/бленд'");
-                            foreach (var r in rows)
-                                Console.WriteLine($"- {r["Name"]} ({r["Country"]}) | Вага: {r["Weight"]}г | Ціна: {r["Price"]} грн");
-                        });
-                        break;
-
-                    case "7":
-                        CheckConnectionAndDo(isConnected, () => {
-                            DataRow[] rows = table.Select("Weight <= 200");
-                            foreach (var r in rows)
-                                Console.WriteLine($"- {r["Name"]} | Залишок: {r["Weight"]}г");
-                        });
-                        break;
-
-                    case "8":
-                        CheckConnectionAndDo(isConnected, () => {
-                            decimal minCost = GetMinCost(table);
-                            Console.WriteLine($"Мінімальна собівартість кави: {minCost} грн");
-                        });
-                        break;
-
-                    case "9":
-                        CheckConnectionAndDo(isConnected, () => {
-                            decimal maxCost = GetMaxCost(table);
-                            Console.WriteLine($"Максимальна собівартість кави: {maxCost} грн");
-                        });
-                        break;
-
-                    case "10":
-                        CheckConnectionAndDo(isConnected, () => {
-                            decimal avgCost = GetAvgCost(table);
-                            Console.WriteLine($"Середня собівартість кави: {avgCost:F2} грн");
-                        });
-                        break;
-
-                    case "11":
-                        CheckConnectionAndDo(isConnected, () => {
-                            decimal minCost = GetMinCost(table);
-                            int count = 0;
-                            foreach (DataRow row in table.Rows)
+                            PrintTable(table);
+                            Console.Write("\nВведіть ID: ");
+                            if (int.TryParse(Console.ReadLine(), out int idToDelete))
                             {
-                                if (Convert.ToDecimal(row["Price"]) == minCost) count++;
+                                DataRow rowToDelete = table.Rows.Find(idToDelete);
+                                if (rowToDelete != null)
+                                {
+                                    rowToDelete.Delete();
+                                    adapter.Update(table);
+                                    Console.WriteLine("Запис видалено!");
+                                }
+                                else
+                                {
+                                    Console.WriteLine("Запис не знайдено");
+                                }
                             }
-                            Console.WriteLine($"Кількість сортів з мінімальною собівартістю ({minCost} грн): {count}");
-                        });
-                        break;
-
-                    case "12":
-                        CheckConnectionAndDo(isConnected, () => {
-                            decimal maxCost = GetMaxCost(table);
-                            int count = 0;
-                            foreach (DataRow row in table.Rows)
-                            {
-                                if (Convert.ToDecimal(row["Price"]) == maxCost) count++;
-                            }
-                            Console.WriteLine($"Кількість сортів з максимальною собівартістю ({maxCost} грн): {count}");
-                        });
-                        break;
-
-                    case "13":
-                        CheckConnectionAndDo(isConnected, () => {
-                            int arabica = 0, robusta = 0, blend = 0;
-                            foreach (DataRow row in table.Rows)
-                            {
-                                string type = row["Type"].ToString()?.ToLower() ?? "";
-                                if (type == "арабіка") arabica++;
-                                else if (type == "робуста") robusta++;
-                                else if (type == "купаж/бленд") blend++;
-                            }
-                            Console.WriteLine($"Арабіка: {arabica}");
-                            Console.WriteLine($"Робуста: {robusta}");
-                            Console.WriteLine($"Купаж/бленд: {blend}");
                         });
                         break;
 
@@ -184,12 +157,194 @@ namespace CoffeeShop
                         return;
 
                     default:
-                        Console.WriteLine("Невірний вибір.");
+                        Console.WriteLine("Невірний пункт меню");
                         break;
                 }
 
-                Console.WriteLine("\nНатисни будь-яку клавішу, щоб продовжити...");
+                Console.WriteLine("\nНатисніть будь-яку клавішу для продовження...");
                 Console.ReadKey();
+            }
+        }
+
+        static void SelectMenu()
+        {
+            while (true)
+            {
+                Console.Clear();
+                Console.WriteLine("------- Меню виведення -------");
+                Console.WriteLine(" 1. Вся інформація з таблиці");
+                Console.WriteLine(" 2. Назви усіх сортів кави");
+                Console.WriteLine(" 3. Кава виду «арабіка»");
+                Console.WriteLine(" 4. Кава виду «робуста»");
+                Console.WriteLine(" 5. Кава виду «купаж/бленд»");
+                Console.WriteLine(" 6. Назви сортів вагою <= 200 грамів");
+                Console.WriteLine(" 7. Мінімальна ціна кави");
+                Console.WriteLine(" 8. Максимальна ціна кави");
+                Console.WriteLine(" 9. Середня ціна кави");
+                Console.WriteLine("10. Кількість сортів з мінімальною ціною");
+                Console.WriteLine("11. Кількість сортів з максимальною ціною");
+                Console.WriteLine("12. Кількість арабіки, робусти, купажу");
+                Console.WriteLine("13. Кава, в описі якої є «вишня»");
+                Console.WriteLine("14. Кава в заданому діапазоні ціни");
+                Console.WriteLine("15. Кава в заданому діапазоні ваги");
+                Console.WriteLine("16. Кава із зазначених країн");
+                Console.WriteLine("17. Кількість сортів кави з кожної країни");
+                Console.WriteLine("18. Середня вага кави по кожній країні");
+                Console.WriteLine("19. Топ-3 найдешевші сорти з певної країни");
+                Console.WriteLine("20. Топ-3 найдорожчі сорти з певної країни");
+                Console.WriteLine("21. Топ-3 найдешевші сорти по всіх країнах");
+                Console.WriteLine("22. Топ-3 найдорожчі сорти по всіх країнах");
+                Console.WriteLine("23. Топ-3 країн за кількістю сортів");
+                Console.WriteLine("24. Топ-3 країн за кількістю грамів");
+                Console.WriteLine("25. Топ-3 арабіки за вагою");
+                Console.WriteLine("26. Топ-3 робусти за вагою");
+                Console.WriteLine("27. Топ-3 купажу за вагою");
+                Console.WriteLine("28. Топ-3 кави по кожному виду за вагою");
+                Console.WriteLine(" 0. Назад у головне меню");
+                Console.Write(" >] ");
+
+                string subChoice = Console.ReadLine() ?? "";
+                Console.WriteLine();
+
+                if (subChoice == "0") break;
+
+                switch (subChoice)
+                {
+                    case "1":
+                        ExecuteAndPrintSql("SELECT * FROM Coffee");
+                        break;
+                    case "2":
+                        ExecuteAndPrintSql("SELECT Name FROM Coffee");
+                        break;
+                    case "3":
+                        ExecuteAndPrintSql("SELECT * FROM Coffee WHERE Type = N'арабіка'");
+                        break;
+                    case "4":
+                        ExecuteAndPrintSql("SELECT * FROM Coffee WHERE Type = N'робуста'");
+                        break;
+                    case "5":
+                        ExecuteAndPrintSql("SELECT * FROM Coffee WHERE Type = N'купаж/бленд'");
+                        break;
+                    case "6":
+                        ExecuteAndPrintSql("SELECT Name, Weight FROM Coffee WHERE Weight <= 200");
+                        break;
+                    case "7":
+                        ExecuteAndPrintSql("SELECT MIN(Price) AS MinPrice FROM Coffee");
+                        break;
+                    case "8":
+                        ExecuteAndPrintSql("SELECT MAX(Price) AS MaxPrice FROM Coffee");
+                        break;
+                    case "9":
+                        ExecuteAndPrintSql("SELECT AVG(Price) AS AvgPrice FROM Coffee");
+                        break;
+                    case "10":
+                        ExecuteAndPrintSql("SELECT COUNT(*) AS CountMinPrice FROM Coffee WHERE Price = (SELECT MIN(Price) FROM Coffee)");
+                        break;
+                    case "11":
+                        ExecuteAndPrintSql("SELECT COUNT(*) AS CountMaxPrice FROM Coffee WHERE Price = (SELECT MAX(Price) FROM Coffee)");
+                        break;
+                    case "12":
+                        ExecuteAndPrintSql("SELECT Type, COUNT(*) AS Count FROM Coffee GROUP BY Type");
+                        break;
+                    case "13":
+                        ExecuteAndPrintSql("SELECT * FROM Coffee WHERE Description LIKE N'%вишня%'");
+                        break;
+                    case "14":
+                        Console.Write("Мін. ціна: ");
+                        string minP = Console.ReadLine() ?? "0";
+                        Console.Write("Макс. ціна: ");
+                        string maxP = Console.ReadLine() ?? "999999";
+                        ExecuteAndPrintSql($"SELECT * FROM Coffee WHERE Price >= {minP} AND Price <= {maxP}");
+                        break;
+                    case "15":
+                        Console.Write("Мін. вага (г): ");
+                        string minW = Console.ReadLine() ?? "0";
+                        Console.Write("Макс. вага (г): ");
+                        string maxW = Console.ReadLine() ?? "999999";
+                        ExecuteAndPrintSql($"SELECT * FROM Coffee WHERE Weight >= {minW} AND Weight <= {maxW}");
+                        break;
+                    case "16":
+                        Console.Write("Введіть країни через кому (наприклад: Бразилія, Ефіопія): ");
+                        string countryInput = Console.ReadLine() ?? "";
+                        string formattedCountries = string.Join(",", countryInput.Split(',').Select(c => $"N'{c.Trim()}'"));
+                        ExecuteAndPrintSql($"SELECT * FROM Coffee WHERE Country IN ({formattedCountries})");
+                        break;
+                    case "17":
+                        ExecuteAndPrintSql("SELECT Country, COUNT(*) AS CoffeeCount FROM Coffee GROUP BY Country");
+                        break;
+                    case "18":
+                        ExecuteAndPrintSql("SELECT Country, AVG(CAST(Weight AS FLOAT)) AS AvgWeight FROM Coffee GROUP BY Country");
+                        break;
+                    case "19":
+                        Console.Write("Введіть країну: ");
+                        string cTarget = Console.ReadLine() ?? "";
+                        ExecuteAndPrintSql($"SELECT TOP 3 * FROM Coffee WHERE Country = N'{cTarget}' ORDER BY Price ASC");
+                        break;
+                    case "20":
+                        Console.Write("Введіть країну: ");
+                        string cTarget2 = Console.ReadLine() ?? "";
+                        ExecuteAndPrintSql($"SELECT TOP 3 * FROM Coffee WHERE Country = N'{cTarget2}' ORDER BY Price DESC");
+                        break;
+                    case "21":
+                        ExecuteAndPrintSql("SELECT TOP 3 * FROM Coffee ORDER BY Price ASC");
+                        break;
+                    case "22":
+                        ExecuteAndPrintSql("SELECT TOP 3 * FROM Coffee ORDER BY Price DESC");
+                        break;
+                    case "23":
+                        ExecuteAndPrintSql("SELECT TOP 3 Country, COUNT(*) AS CoffeeCount FROM Coffee GROUP BY Country ORDER BY COUNT(*) DESC");
+                        break;
+                    case "24":
+                        ExecuteAndPrintSql("SELECT TOP 3 Country, SUM(Weight) AS TotalWeight FROM Coffee GROUP BY Country ORDER BY SUM(Weight) DESC");
+                        break;
+                    case "25":
+                        ExecuteAndPrintSql("SELECT TOP 3 * FROM Coffee WHERE Type = N'арабіка' ORDER BY Weight DESC");
+                        break;
+                    case "26":
+                        ExecuteAndPrintSql("SELECT TOP 3 * FROM Coffee WHERE Type = N'робуста' ORDER BY Weight DESC");
+                        break;
+                    case "27":
+                        ExecuteAndPrintSql("SELECT TOP 3 * FROM Coffee WHERE Type = N'купаж/бленд' ORDER BY Weight DESC");
+                        break;
+                    case "28":
+                        Console.WriteLine("--- Арабіка ---");
+                        ExecuteAndPrintSql("SELECT TOP 3 * FROM Coffee WHERE Type = N'арабіка' ORDER BY Weight DESC");
+                        Console.WriteLine("--- Робуста ---");
+                        ExecuteAndPrintSql("SELECT TOP 3 * FROM Coffee WHERE Type = N'робуста' ORDER BY Weight DESC");
+                        Console.WriteLine("--- Купаж/бленд ---");
+                        ExecuteAndPrintSql("SELECT TOP 3 * FROM Coffee WHERE Type = N'купаж/бленд' ORDER BY Weight DESC");
+                        break;
+                    default:
+                        Console.WriteLine("Невірний вибір");
+                        break;
+                }
+
+                Console.WriteLine("\nНатисніть будь-яку клавішу...");
+                Console.ReadKey();
+            }
+        }
+
+        static void ExecuteAndPrintSql(string query)
+        {
+            using (SqlConnection connection = new SqlConnection(conn))
+            {
+                using (SqlCommand command = new SqlCommand(query, connection))
+                {
+                    try
+                    {
+                        connection.Open();
+                        using (SqlDataReader reader = command.ExecuteReader())
+                        {
+                            DataTable dt = new DataTable();
+                            dt.Load(reader);
+                            PrintTable(dt);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Помилка: {ex.Message}");
+                    }
+                }
             }
         }
 
@@ -197,56 +352,29 @@ namespace CoffeeShop
         {
             if (!isConnected)
             {
-                Console.WriteLine("Спочатку під'єднайся до бази даних!");
+                Console.WriteLine("Спочатку під'єднайтеся до БД!");
                 return;
             }
             action();
         }
 
-        static decimal GetMinCost(DataTable dt)
-        {
-            decimal min = decimal.MaxValue;
-            foreach (DataRow row in dt.Rows)
-            {
-                decimal price = Convert.ToDecimal(row["Price"]);
-                if (price < min) min = price;
-            }
-            return min;
-        }
-
-        static decimal GetMaxCost(DataTable dt)
-        {
-            decimal max = decimal.MinValue;
-            foreach (DataRow row in dt.Rows)
-            {
-                decimal price = Convert.ToDecimal(row["Price"]);
-                if (price > max) max = price;
-            }
-            return max;
-        }
-
-        static decimal GetAvgCost(DataTable dt)
-        {
-            if (dt.Rows.Count == 0) return 0;
-            decimal sum = 0;
-            foreach (DataRow row in dt.Rows)
-            {
-                sum += Convert.ToDecimal(row["Price"]);
-            }
-            return sum / dt.Rows.Count;
-        }
-
         static void PrintTable(DataTable dt)
         {
-            Console.WriteLine($"\nТаблиця: {dt.TableName} (Всього рядків: {dt.Rows.Count})");
+            if (dt.Rows.Count == 0)
+            {
+                Console.WriteLine("Нічого не знайдено");
+                return;
+            }
+
+            Console.WriteLine($"\nРядків: {dt.Rows.Count}");
             foreach (DataColumn col in dt.Columns)
-                Console.Write($"{col.ColumnName,-15} | ");
-            Console.WriteLine("\n---------------------------------------------------------------------------------------------------------");
+                Console.Write($"{col.ColumnName,-14} | ");
+            Console.WriteLine("\n----------------------------------------------------------------------------------------------------------------------");
 
             foreach (DataRow row in dt.Rows)
             {
                 foreach (var item in row.ItemArray)
-                    Console.Write($"{item,-15} | ");
+                    Console.Write($"{item,-14} | ");
                 Console.WriteLine();
             }
         }
@@ -267,12 +395,19 @@ namespace CoffeeShop
 //GO
 
 
-//INSERT INTO Coffee([Name], [Country], [Type], [Description], [Weight], [Price]) VALUES
-//('Ethiopia Yirgacheffe', 'Ефіопія', 'арабіка', 'Яскравий квітковий аромат з нотами бергамоту', 150, 250.00),
-//('Brazil Santos', 'Бразилія', 'арабіка', 'М''який смак з відтінком молочного шоколаду', 500, 180.00),
-//('Vietnam Robusta', 'В''єтнам', 'робуста', 'Міцна кава з вираженою гірчинкою та горіховим смаком', 120, 110.00),
-//('Italian Espresso Blend', 'Італія', 'купаж/бленд', 'Ідеальна суміш для насиченого еспресо з густою пінкою', 200, 210.00),
-//('Uganda Bugisu', 'Уганда', 'робуста', 'Землистий профіль з пряними нотками', 190, 125.00),
-//('Colombia Supremo', 'Колумбія', 'арабіка', 'Збалансований карамельний смак з фруктовою кислинкою', 300, 220.00),
-//('Morning Blend', 'Бразилія/В''єтнам', 'купаж/бленд', 'Бадьорий мікс арабіки та робусти', 180, 160.00);
-//GO
+//INSERT INTO Coffee(Name, Country, Type, Description, Weight, Price) VALUES 
+//(N'Ethiopia', N'Ефіопія', N'арабіка', N'вишня', 250, 150.00),
+//(N'Brazil', N'Бразилія', N'арабіка', N'шоколад', 500, 180.00),
+//(N'Vietnam', N'В''єтнам', N'робуста', N'міцність', 250, 110.00),
+//(N'Italian', N'Італія', N'купаж/бленд', N'пінка', 1000, 210.00),
+//(N'Uganda', N'Уганда', N'арабіка', N'ягоди', 250, 190.00),
+//(N'Colombia', N'Колумбія', N'арабіка', N'карамель', 500, 220.00),
+//(N'Morning', N'Італія', N'купаж/бленд', N'бадьорість', 250, 160.00),
+//(N'Kenya', N'Кенія', N'арабіка', N'смородина', 250, 260.00),
+//(N'Guatemala', N'Гватемала', N'арабіка', N'прянощі', 500, 240.00),
+//(N'CostaRica', N'Коста-Рика', N'арабіка', N'мел', 250, 230.00),
+//(N'India', N'Індія', N'арабіка', N'землистий', 500, 200.00),
+//(N'Sumatra', N'Індонезія', N'робуста', N'тютюн', 250, 140.00),
+//(N'Java', N'Індонезія', N'арабіка', N'горіх', 500, 215.00),
+//(N'Classic', N'Бразилія', N'купаж/бленд', N'класика', 1000, 195.00),
+//(N'Rwanda', N'Руанда', N'арабіка', N'квіти', 250, 270.00);
